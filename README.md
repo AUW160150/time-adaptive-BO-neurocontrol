@@ -90,31 +90,5 @@ K_temporal(t,t') = exp(-ε|t-t'|)
 - Robust performance for ε/β ∈ [0.5, 2.0]
 - Critical threshold: R > 0.3 enables successful tracking
 
-## Citation
 
-If you use this code in your research, please cite:
-```bibtex
-@techreport{timeadaptivebo2024,
-  title={Time-Adaptive Bayesian Optimization for Non-Stationary Neural Control},
-  author={[Your Name]},
-  institution={Matter and Energy LLC},
-  year={2024}
-}
-```
 
-## License
-
-MIT License - See LICENSE file for details
-
-## Contact
-
-For questions or collaboration: [your-email]
-
-## Acknowledgments
-
-This work was developed as part of the Matter and Energy LLC Technical Capability Assessment. Mathematical derivation verification performed using Claude (Anthropic).
-```
-
-## For your paper, add:
-```
-Implementation details and code available at: https://github.com/[your-username]/time-adaptive-bo-neurocontrol
