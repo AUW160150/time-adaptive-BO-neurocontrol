@@ -1,94 +1,59 @@
-# Time-Adaptive Bayesian Optimization for Neural Control
-Code repository for "Time-Adaptive Bayesian Optimization for Non-Stationary Neural Control Systems" 
+# Analytical Sketches for Time-Adaptive Bayesian Optimization
 
-## Overview
+This repository contains a Python script for generating conceptual figures that illustrate the principles of Time-Adaptive Bayesian Optimization (BO) for non-stationary problems. The visualizations are **analytical sketches** based on heuristic formulas, designed to provide intuition for the performance of BO with and without a temporal forgetting mechanism.
 
-This repository contains the implementation and visualization code for time-adaptive Bayesian optimization with temporal forgetting kernels, designed to handle non-stationary optimization problems in neural control systems.
+The script generates the three figures described below, which are useful for understanding how a forgetting factor **ε** helps a BO model track an optimal solution that drifts over time at a rate **β**.
 
-## Key Features
+---
 
-- **Temporal Forgetting Kernels**: Implementation of exponentially decaying temporal kernels for Gaussian processes
-- **Comparative Analysis**: Standard BO vs. Time-aware BO under various drift conditions
-- **Sensitivity Analysis**: Performance evaluation across different forgetting factors
-- **Figure Generation**: Publication-quality visualizations of system architecture and performance metrics
+## Figures Generated
 
-## Repository Structure
-```
-├── figures/
-│   ├── figure_generation.py    # Main script for generating all figures
-│   └── outputs/                 # Generated figures (.png and .pdf)
-├── src/
-│   ├── temporal_bo.py          # Core time-adaptive BO implementation
-│   ├── kernels.py              # Temporal and spatial kernel definitions
-│   └── utils.py                # Helper functions
-├── notebooks/
-│   └── validation_analysis.ipynb  # Computational validation experiments
-├── requirements.txt
-└── README.md
-```
+### Figure 1: System Architecture & Forgetting Mechanism
 
-## Installation
-```bash
-pip install -r requirements.txt
-```
+This figure outlines the conceptual framework.
 
-### Dependencies
-- numpy >= 1.20.0
-- matplotlib >= 3.3.0
-- botorch >= 0.6.0
-- torch >= 1.10.0
-- gpytorch >= 1.6.0
+* **(A) Neural System:** Depicts the black-box optimization problem: finding optimal stimulation parameters `x` to maximize a time-varying neural response `f(x,t)`.
+* **(B) BO Loop:** Shows the standard Bayesian optimization loop, modified with a temporal kernel to account for the time-dependency.
+* **(C) Forgetting Mechanism:** Plots the exponential forgetting kernel weights, $w = \exp(-\epsilon |t-t'|)$, which give less importance to older observations. A higher `ε` leads to faster forgetting.
 
-## Usage
+<img width="975" height="279" alt="image" src="https://github.com/user-attachments/assets/230a1b2c-6605-4a2e-ba16-830c878a0bf7" />
 
-### Generate Figures
-```python
-python figures/figure_generation.py
-```
+---
 
-This will generate:
-- `Figure1_Architecture.png/pdf`: System architecture and forgetting mechanism
-- `Figure2_Regret.png/pdf`: Cumulative regret comparison
-- `Figure3_Sensitivity.png/pdf`: Sensitivity analysis
+### Figure 2: Cumulative Regret with Environmental Drift
 
-### Run Time-Adaptive BO
-```python
-from src.temporal_bo import TimeAdaptiveBO
+This figure compares the theoretical performance of different BO algorithms in an environment with a fixed drift rate ($\beta = 0.02$).
 
-# Initialize optimizer
-optimizer = TimeAdaptiveBO(
-    dim=3,                    # Parameter dimensions
-    forgetting_factor=0.02,   # ε parameter
-    drift_rate=0.02          # β drift rate
-)
+* **Standard BO (No forgetting):** The inability to discard old data leads to a model that lags the drifting optimum, resulting in a **quadratic regret cost** ($R(T) \propto \beta T^2$).
+* **Time-aware BO (With forgetting):** By correctly discounting past observations, the model can track the optimum, reducing the drift cost to be **linear** ($R(T) \propto \beta T$).
+* **Oracle (Perfect tracking):** Represents an ideal, non-drifting scenario, where regret grows sub-linearly ($R(T) \propto \sqrt{T \log T}$).
 
-# Run optimization
-results = optimizer.optimize(n_iterations=50)
-```
+The heuristic formulas used are:
+* Standard BO: $R_{std}(T) = \sqrt{T\log(T+1)} + \beta T^2$
+* Time-aware BO: $R_{adapt}(T) = \sqrt{T\log(T+1)} + \beta T$
+* Oracle: $R_{oracle}(T) = \sqrt{T\log(T+1)}$
 
-## Mathematical Framework
+<img width="975" height="693" alt="image" src="https://github.com/user-attachments/assets/9f5dfb35-0d75-4916-b7bb-a2f9f34cbe41" />
 
-The core innovation implements spatio-temporal covariance:
-```
-K((x,t), (x',t')) = K_spatial(x,x') · K_temporal(t,t')
-```
+---
 
-where the temporal kernel uses exponential forgetting:
-```
-K_temporal(t,t') = exp(-ε|t-t'|)
-```
+### Figure 3: Sensitivity to Forgetting Factor (ε)
 
-## Key Parameters
+This plot shows how the final cumulative regret at $T=50$ changes with the choice of the forgetting factor `ε` for several different drift rates `β`.
 
-- **ε (epsilon)**: Forgetting factor controlling memory window
-- **β (beta)**: Drift rate of the objective function
-- **R = τ_adapt/τ_opt**: Critical ratio for tracking feasibility
+It highlights three key regimes:
+1.  **Under-forgetting ($\epsilon \ll \beta$):** The model remembers too much outdated information, leading to high, quadratic-like regret.
+2.  **Near-optimal ($\epsilon \approx \beta$):** The forgetting rate is well-matched to the drift rate, minimizing the regret. The algorithm performs robustly in the region where $\epsilon \in [0.5\beta, 2\beta]$.
+3.  **Over-forgetting ($\epsilon \gg \beta$):** The model forgets too quickly, effectively reducing the amount of useful data and increasing the constant factor on the linear regret term.
 
-## Validation Results
+<img width="975" height="692" alt="image" src="https://github.com/user-attachments/assets/6ea4cfad-3bf6-4bf1-8fba-d71b228ce397" />
 
-- **86% regret reduction** for moderate drift (β = 0.02)
-- Robust performance for ε/β ∈ [0.5, 2.0]
-- Critical threshold: R > 0.3 enables successful tracking
+---
 
+## Getting Started
 
+### Prerequisites
 
+You need Python 3 and the following libraries installed:
+* NumPy
+* Matplotlib
