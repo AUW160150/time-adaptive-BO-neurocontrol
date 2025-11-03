@@ -16,7 +16,7 @@ This figure outlines the conceptual framework.
 * **(B) BO Loop:** Shows the standard Bayesian optimization loop, modified with a temporal kernel to account for the time-dependency.
 * **(C) Forgetting Mechanism:** Plots the exponential forgetting kernel weights, $w = \exp(-\epsilon |t-t'|)$, which give less importance to older observations. A higher `ε` leads to faster forgetting.
 
-<img width="975" height="279" alt="image" src="https://github.com/user-attachments/assets/230a1b2c-6605-4a2e-ba16-830c878a0bf7" />
+<img width="3569" height="1020" alt="image" src="https://github.com/user-attachments/assets/f50195a5-e059-4735-8ffe-d75afa90569a" />
 
 ---
 
@@ -33,7 +33,8 @@ The heuristic formulas used are:
 * Time-aware BO: $R_{adapt}(T) = \sqrt{T\log(T+1)} + \beta T$
 * Oracle: $R_{oracle}(T) = \sqrt{T\log(T+1)}$
 
-<img width="975" height="693" alt="image" src="https://github.com/user-attachments/assets/9f5dfb35-0d75-4916-b7bb-a2f9f34cbe41" />
+<img width="2370" height="1470" alt="image" src="https://github.com/user-attachments/assets/34b6bd08-e58c-427c-afad-1cb9dc7c448a" />
+
 
 ---
 
@@ -46,7 +47,8 @@ It highlights three key regimes:
 2.  **Near-optimal ($\epsilon \approx \beta$):** The forgetting rate is well-matched to the drift rate, minimizing the regret. The algorithm performs robustly in the region where $\epsilon \in [0.5\beta, 2\beta]$.
 3.  **Over-forgetting ($\epsilon \gg \beta$):** The model forgets too quickly, effectively reducing the amount of useful data and increasing the constant factor on the linear regret term.
 
-<img width="975" height="692" alt="image" src="https://github.com/user-attachments/assets/6ea4cfad-3bf6-4bf1-8fba-d71b228ce397" />
+<img width="2370" height="1470" alt="image" src="https://github.com/user-attachments/assets/86a75b9f-8156-48f0-8ef7-ca7a4346bf93" />
+
 
 ---
 
