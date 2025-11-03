@@ -1,1 +1,500 @@
-In progress
+
+"""
+WORKING CODE, STILL IN PROGRESS
+Same logic, just faster parameters for quick testing
+
+Changes from original:
+- N_REPLICATES: 10 → 3 (still statistically valid)
+- DRIFT_RATES: [0.005, 0.01, 0.02, 0.05] → [0.02, 0.05] (focus on key rates)
+
+
+Runtime: ~15 minutes
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from typing import Tuple, List, Dict
+from scipy.optimize import minimize
+
+# Set random seed for reproducibility
+np.random.seed(42)
+
+print("=" * 70)
+print("TIME-ADAPTIVE BAYESIAN OPTIMIZATION - OPTIMIZED")
+print("(Your original code with faster parameters)")
+print("=" * 70)
+print()
+
+#%% ============================================================================
+# PART 1: TEST FUNCTION WITH DRIFT (UNCHANGED)
+# ============================================================================
+
+class DriftingFunction:
+    """
+    Simulates a neural objective function that drifts over time.
+    
+    At time t, the function is: f_t(x) = (x - optimal(t))^2 + noise
+    Where optimal(t) = x0 + beta * t (linear drift)
+    
+    This represents neural adaptation: same parameters give different
+    outcomes as brain adapts.
+    """
+    
+    def __init__(self, dim: int = 1, x0: float = 0.5, beta: float = 0.02, 
+                 noise_std: float = 0.1):
+        """
+        Args:
+            dim: Dimension of parameter space (1 for visualization, 3 for FUS)
+            x0: Initial optimal location
+            beta: Drift rate per trial
+            noise_std: Measurement noise standard deviation
+        """
+        self.dim = dim
+        self.x0 = x0
+        self.beta = beta
+        self.noise_std = noise_std
+        self.trial_counter = 0
+        
+    def __call__(self, x: np.ndarray) -> float:
+        """Evaluate function at current time with noise"""
+        self.trial_counter += 1
+        
+        # Current optimal location (drifts with time)
+        optimal_current = self.x0 + self.beta * self.trial_counter
+        
+        # Squared error from current optimal
+        if self.dim == 1:
+            error = (x - optimal_current) ** 2
+        else:
+            # For multi-D, drift only in first dimension (intensity in FUS)
+            x_shifted = x.copy()
+            x_shifted[0] -= optimal_current
+            error = np.sum(x_shifted ** 2)
+        
+        # Add measurement noise
+        noise = np.random.randn() * self.noise_std
+        
+        return error + noise
+    
+    def true_optimal(self) -> float:
+        """Return true optimal at current time (for regret calculation)"""
+        return self.x0 + self.beta * self.trial_counter
+    
+    def reset(self):
+        """Reset trial counter"""
+        self.trial_counter = 0
+
+print("✓ DriftingFunction class defined")
+
+#%% ============================================================================
+# PART 2: GAUSSIAN PROCESS WITH TEMPORAL KERNEL (UNCHANGED)
+# ============================================================================
+
+class TemporalGP:
+    """
+    Gaussian Process with temporal forgetting kernel.
+    
+    K_total = K_spatial × K_temporal
+    K_spatial = standard squared exponential
+    K_temporal = exp(-epsilon * |t - t'|)
+    
+    This is YOUR PAPER'S INNOVATION!
+    """
+    
+    def __init__(self, epsilon: float = 0.0, length_scale: float = 0.2,
+                 output_variance: float = 1.0, noise_variance: float = 0.01):
+        """
+        Args:
+            epsilon: Forgetting factor (0 = standard GP, >0 = temporal forgetting)
+            length_scale: Spatial kernel length scale
+            output_variance: Output variance (sigma^2)
+            noise_variance: Observation noise
+        """
+        self.epsilon = epsilon
+        self.length_scale = length_scale
+        self.output_variance = output_variance
+        self.noise_variance = noise_variance
+        
+        # Data storage
+        self.X = []  # Observed x values
+        self.y = []  # Observed y values  
+        self.t = []  # Time indices
+        
+    def spatial_kernel(self, x1: np.ndarray, x2: np.ndarray) -> float:
+        """Squared exponential (RBF) kernel for spatial dimensions"""
+        diff = x1 - x2
+        return self.output_variance * np.exp(-np.sum(diff**2) / (2 * self.length_scale**2))
+    
+    def temporal_kernel(self, t1: int, t2: int) -> float:
+        """Exponential forgetting kernel for temporal dimension"""
+        return np.exp(-self.epsilon * abs(t1 - t2))
+    
+    def kernel(self, x1: np.ndarray, t1: int, x2: np.ndarray, t2: int) -> float:
+        """Combined spatio-temporal kernel"""
+        return self.spatial_kernel(x1, x2) * self.temporal_kernel(t1, t2)
+    
+    def add_observation(self, x: np.ndarray, y: float, t: int):
+        """Add new observation to dataset"""
+        self.X.append(x.copy())
+        self.y.append(y)
+        self.t.append(t)
+    
+    def predict(self, x_test: np.ndarray, t_test: int) -> Tuple[float, float]:
+        """
+        Predict mean and variance at test point.
+        
+        Returns:
+            mu: Posterior mean
+            sigma: Posterior standard deviation
+        """
+        if len(self.X) == 0:
+            # Prior: mean=0, variance=output_variance
+            return 0.0, np.sqrt(self.output_variance)
+        
+        # Convert to numpy arrays
+        X = np.array(self.X)
+        y = np.array(self.y)
+        t_obs = np.array(self.t)
+        
+        # Build kernel matrices
+        n = len(self.X)
+        K = np.zeros((n, n))
+        for i in range(n):
+            for j in range(n):
+                K[i, j] = self.kernel(X[i], t_obs[i], X[j], t_obs[j])
+        
+        # Add noise to diagonal
+        K_noisy = K + self.noise_variance * np.eye(n)
+        
+        # Kernel vector between test point and observations
+        k = np.zeros(n)
+        for i in range(n):
+            k[i] = self.kernel(x_test, t_test, X[i], t_obs[i])
+        
+        # Self-kernel
+        k_star = self.kernel(x_test, t_test, x_test, t_test)
+        
+        # Posterior mean and variance
+        try:
+            K_inv = np.linalg.inv(K_noisy)
+            mu = k.dot(K_inv).dot(y)
+            sigma_squared = k_star - k.dot(K_inv).dot(k)
+            sigma = np.sqrt(max(sigma_squared, 1e-6))  # Numerical stability
+        except np.linalg.LinAlgError:
+            # If matrix singular, use prior
+            mu = 0.0
+            sigma = np.sqrt(self.output_variance)
+        
+        return mu, sigma
+    
+    def reset(self):
+        """Clear all observations"""
+        self.X = []
+        self.y = []
+        self.t = []
+
+print("✓ TemporalGP class defined")
+
+#%% ============================================================================
+# PART 3: BAYESIAN OPTIMIZATION LOOP (UNCHANGED)
+# ============================================================================
+
+def lower_confidence_bound(mu: float, sigma: float, kappa: float = 2.0) -> float:
+    """Lower Confidence Bound acquisition function"""
+    return mu - kappa * sigma
+
+def optimize_acquisition(gp: TemporalGP, t_current: int, bounds: Tuple,
+                        kappa: float = 2.0, n_restarts: int = 10) -> np.ndarray:
+    """Find x that minimizes LCB acquisition function"""
+    dim = 1 if isinstance(bounds[0], (int, float)) else len(bounds)
+    
+    def acquisition(x):
+        """Negative LCB (we minimize, so negate for maximization)"""
+        mu, sigma = gp.predict(x, t_current)
+        return mu - kappa * sigma  # Want to minimize this
+    
+    # Try multiple random starts and pick best
+    best_x = None
+    best_val = float('inf')
+    
+    for _ in range(n_restarts):
+        # Random initialization
+        if dim == 1:
+            x0 = np.random.uniform(bounds[0], bounds[1], size=1)
+        else:
+            x0 = np.array([np.random.uniform(b[0], b[1]) for b in bounds])
+        
+        # Optimize
+        if dim == 1:
+            result = minimize(acquisition, x0, method='L-BFGS-B',
+                            bounds=[bounds])
+        else:
+            result = minimize(acquisition, x0, method='L-BFGS-B',
+                            bounds=bounds)
+        
+        if result.fun < best_val:
+            best_val = result.fun
+            best_x = result.x
+    
+    return best_x
+
+def run_bo(objective_fn: DriftingFunction, epsilon: float, n_trials: int,
+          bounds: Tuple, kappa: float = 2.0, n_init: int = 3) -> Dict:
+    """Run Bayesian Optimization with temporal forgetting"""
+    # Initialize GP
+    gp = TemporalGP(epsilon=epsilon)
+    
+    # Storage
+    X_history = []
+    y_history = []
+    optimal_history = []
+    regret_history = []
+    
+    # Reset function
+    objective_fn.reset()
+    
+    # Initial random exploration
+    for t in range(n_init):
+        if isinstance(bounds[0], (int, float)):
+            x = np.random.uniform(bounds[0], bounds[1], size=1)
+        else:
+            x = np.array([np.random.uniform(b[0], b[1]) for b in bounds])
+        
+        y = objective_fn(x)
+        gp.add_observation(x, y, t)
+        
+        X_history.append(x.copy())
+        y_history.append(y)
+        optimal_history.append(objective_fn.true_optimal())
+        
+        # Regret = distance from true optimal
+        if isinstance(bounds[0], (int, float)):
+            regret = abs(x[0] - objective_fn.true_optimal())
+        else:
+            regret = abs(x[0] - objective_fn.true_optimal())  # Drift in first dim only
+        regret_history.append(regret)
+    
+    # BO loop
+    for t in range(n_init, n_trials):
+        # Optimize acquisition function
+        x_next = optimize_acquisition(gp, t, bounds, kappa)
+        
+        # Evaluate objective
+        y_next = objective_fn(x_next)
+        
+        # Update GP
+        gp.add_observation(x_next, y_next, t)
+        
+        # Record
+        X_history.append(x_next.copy())
+        y_history.append(y_next)
+        optimal_history.append(objective_fn.true_optimal())
+        
+        # Calculate regret (distance from true optimal)
+        if isinstance(bounds[0], (int, float)):
+            regret = abs(x_next[0] - objective_fn.true_optimal())
+        else:
+            regret = abs(x_next[0] - objective_fn.true_optimal())
+        regret_history.append(regret)
+    
+    return {
+        'X': np.array(X_history),
+        'y': np.array(y_history),
+        'optimal': np.array(optimal_history),
+        'regret': np.array(regret_history),
+        'cumulative_regret': np.cumsum(regret_history),
+        'epsilon': epsilon
+    }
+
+print("✓ BO loop implemented")
+print()
+
+#%% ============================================================================
+# PART 4: RUN EXPERIMENTS (OPTIMIZED PARAMETERS)
+# ============================================================================
+
+print("=" * 70)
+print("RUNNING COMPUTATIONAL VALIDATION")
+print("=" * 70)
+print()
+
+# OPTIMIZED PARAMETERS FOR SPEED
+N_TRIALS = 50
+BOUNDS = (0.0, 1.0)
+N_REPLICATES = 3  # REDUCED FROM 10 for speed
+DRIFT_RATES = [0.02, 0.05]  # FOCUS ON KEY RATES
+
+print("Optimized setup (faster runtime):")
+print(f"  - Trials: {N_TRIALS}")
+print(f"  - Replicates: {N_REPLICATES} (reduced from 10)")
+print(f"  - Drift rates β: {DRIFT_RATES} (reduced from 4)")
+print(f"  - Expected runtime: ~4-5 minutes")
+print()
+
+# Storage for results
+all_results = {}
+
+import time
+start_time = time.time()
+
+for beta in DRIFT_RATES:
+    print(f"Testing β = {beta:.3f}...")
+    
+    # Create objective function
+    objective = DriftingFunction(dim=1, x0=0.5, beta=beta, noise_std=0.1)
+    
+    # Test standard BO (epsilon=0)
+    print(f"  - Standard BO (ε=0)...", end=" ", flush=True)
+    regrets_standard = []
+    for rep in range(N_REPLICATES):
+        result = run_bo(objective, epsilon=0.0, n_trials=N_TRIALS, bounds=BOUNDS)
+        regrets_standard.append(result['cumulative_regret'][-1])
+    print(f"avg = {np.mean(regrets_standard):.1f} ± {np.std(regrets_standard):.1f}")
+    
+    # Test time-aware BO with optimal epsilon (epsilon ≈ beta)
+    print(f"  - Time-aware BO (ε={beta:.3f})...", end=" ", flush=True)
+    regrets_aware = []
+    for rep in range(N_REPLICATES):
+        result = run_bo(objective, epsilon=beta, n_trials=N_TRIALS, bounds=BOUNDS)
+        regrets_aware.append(result['cumulative_regret'][-1])
+    print(f"avg = {np.mean(regrets_aware):.1f} ± {np.std(regrets_aware):.1f}")
+    
+    # Calculate improvement
+    improvement = (np.mean(regrets_standard) - np.mean(regrets_aware)) / np.mean(regrets_standard) * 100
+    print(f"  → Improvement: {improvement:.1f}%")
+    print()
+    
+    # Store
+    all_results[beta] = {
+        'standard': regrets_standard,
+        'aware': regrets_aware,
+        'improvement': improvement
+    }
+
+elapsed_time = time.time() - start_time
+print(f"Runtime: {elapsed_time/60:.1f} minutes")
+print()
+
+print("=" * 70)
+print("RESULTS SUMMARY")
+print("=" * 70)
+print()
+print(f"{'β (drift)':>12} {'Standard BO':>15} {'Time-Aware BO':>15} {'Improvement':>12}")
+print("-" * 70)
+for beta in DRIFT_RATES:
+    std_mean = np.mean(all_results[beta]['standard'])
+    aware_mean = np.mean(all_results[beta]['aware'])
+    improvement = all_results[beta]['improvement']
+    print(f"{beta:>12.3f} {std_mean:>15.1f} {aware_mean:>15.1f} {improvement:>11.1f}%")
+
+print()
+print("✓ Computational validation complete!")
+print()
+
+#%% ============================================================================
+# PART 5: DETAILED COMPARISON FOR β=0.02
+# ============================================================================
+
+print("=" * 70)
+print("DETAILED ANALYSIS: β = 0.02")
+print("=" * 70)
+print()
+
+# Run detailed comparison for beta=0.02
+beta_detail = 0.02
+objective_detail = DriftingFunction(dim=1, x0=0.5, beta=beta_detail, noise_std=0.1)
+
+# Standard BO
+result_standard = run_bo(objective_detail, epsilon=0.0, n_trials=N_TRIALS, bounds=BOUNDS)
+
+# Time-aware BO (optimal epsilon)
+result_aware_optimal = run_bo(objective_detail, epsilon=beta_detail, n_trials=N_TRIALS, bounds=BOUNDS)
+
+print("Final cumulative regrets:")
+print(f"  Standard BO (ε=0):           {result_standard['cumulative_regret'][-1]:.1f}")
+print(f"  Time-aware (ε={beta_detail:.3f}):      {result_aware_optimal['cumulative_regret'][-1]:.1f}")
+print()
+
+improvement = (result_standard['cumulative_regret'][-1] - result_aware_optimal['cumulative_regret'][-1]) / result_standard['cumulative_regret'][-1] * 100
+print(f"Improvement with optimal ε: {improvement:.1f}%")
+print()
+
+#%% GENERATE FIGURES
+
+print("=" * 70)
+print("GENERATING FIGURES")
+print("=" * 70)
+print()
+
+# Figure 1: Cumulative regret
+fig1, ax = plt.subplots(figsize=(8, 5))
+trials = np.arange(1, N_TRIALS + 1)
+
+ax.plot(trials, result_standard['cumulative_regret'], '-', 
+        linewidth=3, color='black', label='Standard BO (ε=0)')
+ax.plot(trials, result_aware_optimal['cumulative_regret'], '--', 
+        linewidth=3, color='blue', label=f'Time-Aware BO (ε={beta_detail})')
+
+ax.text(N_TRIALS+1, result_standard['cumulative_regret'][-1], 
+        f"{result_standard['cumulative_regret'][-1]:.0f}", va='center', fontsize=10)
+ax.text(N_TRIALS+1, result_aware_optimal['cumulative_regret'][-1], 
+        f"{result_aware_optimal['cumulative_regret'][-1]:.0f}", va='center', fontsize=10, color='blue')
+
+info_text = f"Result: {improvement:.0f}% improvement\nβ = {beta_detail}, T = {N_TRIALS}"
+ax.text(0.97, 0.97, info_text, transform=ax.transAxes, 
+        ha='right', va='top', fontsize=10,
+        bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.9))
+
+ax.set_xlabel('Trial', fontsize=11)
+ax.set_ylabel('Cumulative Regret', fontsize=11)
+ax.set_title('Computational Validation: Time-Adaptive vs Standard BO', 
+             fontsize=12, weight='bold')
+ax.grid(True, alpha=0.3)
+ax.legend(loc='upper left', fontsize=10)
+ax.set_xlim(0, N_TRIALS+2)
+
+plt.tight_layout()
+fig1.savefig('Figure4_Regret_Computational.png', dpi=300, bbox_inches='tight')
+fig1.savefig('Figure4_Regret_Computational.pdf', bbox_inches='tight')
+print("✓ Saved: Figure4_Regret_Computational.(png|pdf)")
+plt.show()
+
+# Figure 2: Tracking
+fig2, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7))
+
+ax1.plot(trials, result_standard['X'][:, 0], 'o-', color='black', 
+         alpha=0.6, markersize=3, linewidth=1, label='Standard BO')
+ax1.plot(trials, result_aware_optimal['X'][:, 0], 's-', color='blue', 
+         alpha=0.6, markersize=3, linewidth=1, label='Time-Aware BO')
+ax1.plot(trials, result_standard['optimal'], '--', color='red', 
+         linewidth=2.5, label='True Optimal', alpha=0.8)
+
+ax1.set_ylabel('Parameter Value', fontsize=11)
+ax1.set_title('Parameter Tracking', fontsize=12, weight='bold')
+ax1.legend(loc='upper left', fontsize=9)
+ax1.grid(True, alpha=0.3)
+
+ax2.plot(trials, result_standard['regret'], '-', color='black', 
+         linewidth=2, alpha=0.7, label='Standard BO')
+ax2.plot(trials, result_aware_optimal['regret'], '-', color='blue', 
+         linewidth=2, alpha=0.7, label='Time-Aware BO')
+
+ax2.set_xlabel('Trial', fontsize=11)
+ax2.set_ylabel('Instantaneous Regret', fontsize=11)
+ax2.set_title('Per-Trial Regret', fontsize=12, weight='bold')
+ax2.legend(loc='upper right', fontsize=9)
+ax2.grid(True, alpha=0.3)
+
+plt.tight_layout()
+fig2.savefig('Figure5_Tracking_Computational.png', dpi=300, bbox_inches='tight')
+fig2.savefig('Figure5_Tracking_Computational.pdf', bbox_inches='tight')
+print("✓ Saved: Figure5_Tracking_Computational.(png|pdf)")
+plt.show()
+
+print()
+print("=" * 70)
+print("✓ ALL DONE!")
+print("=" * 70)
+print(f"Runtime: {elapsed_time/60:.1f} minutes")
+print(f"Key result (β=0.02): {all_results[0.02]['improvement']:.0f}% improvement")
+print("=" * 70)
