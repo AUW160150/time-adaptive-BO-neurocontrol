@@ -47,7 +47,8 @@ It highlights three key regimes:
 2.  **Near-optimal ($\epsilon \approx \beta$):** The forgetting rate is well-matched to the drift rate, minimizing the regret. The algorithm performs robustly in the region where $\epsilon \in [0.5\beta, 2\beta]$.
 3.  **Over-forgetting ($\epsilon \gg \beta$):** The model forgets too quickly, effectively reducing the amount of useful data and increasing the constant factor on the linear regret term.
 
-<img width="2370" height="1470" alt="image" src="https://github.com/user-attachments/assets/86a75b9f-8156-48f0-8ef7-ca7a4346bf93" />
+<img width="2370" height="1470" alt="image" src="https://github.com/user-attachments/assets/f4d8a8ce-889a-4800-ad88-eb0f11acc1b7" />
+
 
 
 ---
@@ -56,29 +57,30 @@ It highlights three key regimes:
 
 ### Prerequisites
 
-You need Python 3 and the following libraries installed:
+Requires Python 3 and the following libraries installed:
 * NumPy
 * Matplotlib
 
 
-Actually implements and tests the algorithm to validate theoretical predictions.
-What It Does
+#Actually implements and tests the algorithm to validate theoretical predictions
 
-Implements the algorithm:
+##What It Does
+
+#Implements the algorithm:
 
 Gaussian Process with temporal kernel: K = K_spatial × exp(-ε|t-t'|)
 LCB acquisition function: α(x) = μ(x) - κ·σ(x)
 BO loop with exploration and exploitation
 
 
-Creates test function:
+#Creates test function:
 
 Drifting objective: f_t(x) = (x - x*(t))² where x*(t) = x₀ + βt
 Simulates neural adaptation (optimal parameters shift over time)
 Adds measurement noise (σ=0.1)
 
 
-Runs experiments:
+#Runs experiments:
 
 Standard BO (ε=0): Treats all data equally
 Time-aware BO (ε=β): Temporal forgetting
@@ -86,13 +88,13 @@ Multiple drift rates: β ∈ {0.005, 0.01, 0.02, 0.05}
 Multiple replications (n=10) for statistics
 
 
-Measures actual regret:
+#Measures actual regret:
 
 At each trial: r_t = |x_sampled - x_optimal(t)|
 Cumulative: R(T) = Σ r_t
 Compares standard vs time-aware
 
-Results
+#Results
 
 β=0.02, T=50:
 
