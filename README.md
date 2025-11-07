@@ -1,6 +1,7 @@
 # Analytical Sketches for Time-Adaptive Bayesian Optimization
 
 In real‑world neural interfaces and neuromodulation systems, the target response often shifts over time (due to adaptation, fatigue, changing system state). A standard BO approach fails to keep up: older observations become misleading. By integrating exponential forgetting, this work bridges the gap—enabling more responsive, robust optimization in dynamic neural control scenarios.
+
 This repository contains a Python script for generating conceptual figures that illustrate the principles of Time-Adaptive Bayesian Optimization (BO) for non-stationary problems. The visualizations are **analytical sketches** based on heuristic formulas, designed to provide intuition for the performance of BO with and without a temporal forgetting mechanism.
 
 The script generates the three figures described below, which are useful for understanding how a forgetting factor **ε** helps a BO model track an optimal solution that drifts over time at a rate **β**.
